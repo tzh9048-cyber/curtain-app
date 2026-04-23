@@ -18,8 +18,10 @@ DEFAULT_EXCEL_PATH = r"C:\Users\Administrator\Desktop\古思特产品资料-2026
 # 话术模板（可在界面里随时修改）
 DEFAULT_TEMPLATE = (
     "您好，这款【产品名称】【颜色】的门幅是【门幅】，克重【克重】，"
-    "目前的价格是【价格】元/米。请问您需要定做多宽的尺寸呢？"
-)
+    "目前的价格是【价格】元/米。")
+
+# 内部访问密码（可按需修改）
+INTERNAL_ACCESS_PASSWORD = "123456"
 
 
 def _normalize_text(x) -> str:
@@ -164,6 +166,35 @@ def copy_to_clipboard_js(text: str) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="客服辅助查询软件", page_icon="🧾", layout="wide")
+
+    # -------------------------
+    # 简单登录拦截：输入内部访问密码
+    # -------------------------
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    if "auth_error" not in st.session_state:
+        st.session_state.auth_error = None
+
+    if not st.session_state.authenticated:
+        st.title("内部访问验证")
+        st.caption("请输入内部访问密码后继续使用。")
+
+        with st.form("login_form", clear_on_submit=False):
+            pwd = st.text_input("请输入内部访问密码", type="password")
+            submitted = st.form_submit_button("进入")
+
+        if submitted:
+            if pwd == INTERNAL_ACCESS_PASSWORD:
+                st.session_state.authenticated = True
+                st.session_state.auth_error = None
+                st.rerun()
+            else:
+                st.session_state.auth_error = "密码错误，请输入正确的内部密码"
+
+        if st.session_state.auth_error:
+            st.error(st.session_state.auth_error)
+
+        return
 
     st.title("客服辅助查询软件")
     st.caption("支持 Excel 自动读取/上传、模糊搜索、结果展示、一键复制标准话术。")
