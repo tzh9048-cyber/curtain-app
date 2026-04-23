@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -120,6 +120,85 @@ def build_script(template: str, row: pd.Series) -> str:
 
 def _safe_series_get(row: pd.Series, col: str) -> str:
     return _normalize_text(row.get(col))
+
+
+def _looks_like_url(s: str) -> bool:
+    s = (s or "").strip().lower()
+    return s.startswith("http://") or s.startswith("https://")
+
+
+def _split_multi_paths(cell_value: str) -> List[str]:
+    """
+    支持一个单元格里放多个路径：
+    - 换行、英文/中文分号、英文/中文逗号 分隔
+    """
+    raw = _normalize_text(cell_value)
+    if not raw:
+        return []
+    seps = ["\n", ";", "；", ",", "，"]
+    parts = [raw]
+    for sep in seps:
+        next_parts: List[str] = []
+        for p in parts:
+            next_parts.extend(p.split(sep))
+        parts = next_parts
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _parse_labeled_media_entries(cell_value: str, default_prefix: str) -> List[Tuple[str, str]]:
+    """
+    将单元格内容解析成 (标题, 路径) 列表。
+    支持写法：
+    - 路径
+    - 标题|路径
+    - 标题=路径
+    - 标题：路径（中文冒号，避免误伤 Windows 盘符 C:\）
+    """
+    entries: List[Tuple[str, str]] = []
+    parts = _split_multi_paths(cell_value)
+    for i, p in enumerate(parts, start=1):
+        title: Optional[str] = None
+        path: str = p
+
+        if "|" in p:
+            left, right = p.split("|", 1)
+            if left.strip() and right.strip():
+                title, path = left.strip(), right.strip()
+        elif "=" in p:
+            left, right = p.split("=", 1)
+            if left.strip() and right.strip():
+                title, path = left.strip(), right.strip()
+        elif "：" in p:
+            left, right = p.split("：", 1)
+            if left.strip() and right.strip():
+                title, path = left.strip(), right.strip()
+
+        if not title:
+            title = f"{default_prefix}{i}"
+        entries.append((title, path))
+    return entries
+
+
+def _resolve_media_path(path_text: str, base_dir: Optional[Path]) -> str:
+    """
+    - URL 直接返回
+    - 绝对路径直接返回
+    - 相对路径：若提供 base_dir，则拼接 base_dir
+    """
+    p = _normalize_text(path_text)
+    if not p:
+        return ""
+    if _looks_like_url(p):
+        return p
+    try:
+        pp = Path(p)
+        if pp.is_absolute():
+            return str(pp)
+        if base_dir is not None:
+            return str((base_dir / pp).resolve())
+        return str(pp)
+    except Exception:
+        return p
 
 
 def _prepare_sheet_df(df_raw: pd.DataFrame) -> Tuple[pd.DataFrame, list]:
@@ -252,6 +331,15 @@ def main() -> None:
     if sheets is None:
         return
 
+    # 用于解析相对媒体路径（仅本地路径模式可稳定推断基准目录）
+    excel_base_dir: Optional[Path] = None
+    if mode != "上传 Excel":
+        try:
+            p = Path(excel_path)
+            excel_base_dir = p.parent if p.exists() else None
+        except Exception:
+            excel_base_dir = None
+
     sheet_names = [name for name in sheets.keys() if name is not None]
     if not sheet_names:
         st.error("该 Excel 未读取到任何工作表（Sheet）。请确认文件内容是否正常。")
@@ -324,36 +412,38 @@ def main() -> None:
             if col not in df.columns:
                 continue
             mask = mask | df[col].astype(str).str.lower().str.contains(q, na=False)
-        result = df[mask].copy()
+        result_full = df[mask].copy()
     else:
-        result = df.copy()
+        result_full = df.copy()
 
     # 优先展示需要的列
     preferred_show_cols = ["产品名称", "颜色", "门幅", "克重（g/m²）", "价格（元/米）"]
-    show_cols = [c for c in preferred_show_cols if c in result.columns]
+    show_cols = [c for c in preferred_show_cols if c in result_full.columns]
     if show_cols:
-        result = result[show_cols]
+        result_show = result_full[show_cols].copy()
+    else:
+        result_show = result_full.copy()
 
     left, right = st.columns([1, 1])
     with left:
-        st.metric("匹配结果", value=len(result))
+        st.metric("匹配结果", value=len(result_show))
     with right:
         st.caption("提示：结果很多时建议先输入关键字缩小范围。")
 
     st.divider()
 
     # 结果展示：逐条卡片（更适合客服一键复制）
-    if len(result) == 0:
+    if len(result_show) == 0:
         st.warning("没有匹配到结果，请换个关键字试试。")
         return
 
     # 限制一次渲染过多卡片导致卡顿（客服场景通常不需要一下看几千条）
     max_render = 200
-    if len(result) > max_render:
-        st.info(f"结果较多（{len(result)} 条），仅展示前 {max_render} 条。建议继续输入关键字缩小范围。")
-        result_to_render = result.head(max_render)
+    if len(result_show) > max_render:
+        st.info(f"结果较多（{len(result_show)} 条），仅展示前 {max_render} 条。建议继续输入关键字缩小范围。")
+        result_to_render = result_show.head(max_render)
     else:
-        result_to_render = result
+        result_to_render = result_show
 
     # 点击“复制话术”后，用 JS 自动复制
     if "copy_text" not in st.session_state:
@@ -361,6 +451,13 @@ def main() -> None:
 
     for idx, row in result_to_render.iterrows():
         with st.container(border=True):
+            # 用完整行数据读取媒体列/更多字段
+            full_row_obj = result_full.loc[idx] if idx in result_full.index else row
+            if isinstance(full_row_obj, pd.DataFrame):
+                full_row = full_row_obj.iloc[0]
+            else:
+                full_row = full_row_obj
+
             c1, c2, c3 = st.columns([0.55, 0.25, 0.20])
 
             with c1:
@@ -393,13 +490,67 @@ def main() -> None:
                     st.write("｜".join(meta_parts))
 
             with c2:
-                script = build_script(template, row)
+                script = build_script(template, full_row)
                 st.text_area("预览话术", value=script, height=90, key=f"preview_{idx}")
 
             with c3:
                 if st.button("复制话术", key=f"copy_{idx}", use_container_width=True):
                     st.session_state.copy_text = script
                     st.toast("已复制到剪贴板", icon="✅")
+
+            # 媒体展示（可选列：图片路径 / 视频路径）
+            has_media_cols = ("图片路径" in df.columns) or ("视频路径" in df.columns)
+            if has_media_cols:
+                tabs = st.tabs(["参数", "图片", "视频"])
+
+                with tabs[0]:
+                    if meta_parts:
+                        st.write("｜".join(meta_parts))
+                    else:
+                        st.caption("暂无可展示的参数字段。")
+
+                with tabs[1]:
+                    img_cell = _safe_series_get(full_row, "图片路径") if "图片路径" in df.columns else ""
+                    images = _parse_labeled_media_entries(img_cell, default_prefix="图片")
+                    if not images:
+                        st.caption("暂无图片。")
+                    else:
+                        shown_any = False
+                        cols_per_row = 2
+                        for start in range(0, len(images), cols_per_row):
+                            cols = st.columns(cols_per_row)
+                            for (title, p0), col in zip(images[start:start + cols_per_row], cols):
+                                resolved = _resolve_media_path(p0, excel_base_dir)
+                                if not resolved:
+                                    continue
+                                with col:
+                                    if _looks_like_url(resolved) or Path(resolved).exists():
+                                        st.image(resolved, caption=title, use_container_width=True)
+                                        shown_any = True
+                                    else:
+                                        st.caption(f"{title}：文件不存在")
+                        if not shown_any:
+                            st.caption("图片路径已填写，但未找到可展示的图片文件。")
+
+                with tabs[2]:
+                    video_cell = _safe_series_get(full_row, "视频路径") if "视频路径" in df.columns else ""
+                    videos = _parse_labeled_media_entries(video_cell, default_prefix="视频")
+                    if not videos:
+                        st.caption("暂无视频。")
+                    else:
+                        shown_any = False
+                        for title, p0 in videos:
+                            resolved = _resolve_media_path(p0, excel_base_dir)
+                            if not resolved:
+                                continue
+                            if _looks_like_url(resolved) or Path(resolved).exists():
+                                st.markdown(f"**{title}**")
+                                st.video(resolved)
+                                shown_any = True
+                            else:
+                                st.caption(f"{title}：文件不存在")
+                        if not shown_any:
+                            st.caption("视频路径已填写，但未找到可播放的视频文件。")
 
     # 放在循环后统一执行复制（避免重复插入 JS）
     if st.session_state.copy_text:
