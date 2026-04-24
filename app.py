@@ -286,6 +286,21 @@ def main() -> None:
                         )
                         st.code(taobao_link, language="text")
 
+                # 抖音视频讲解：安全判断列名 + 当前行有值才展示
+                if "抖音链接" in result_to_render.columns:
+                    douyin_link = _safe_series_get(row, "抖音链接")
+                    if douyin_link:
+                        st.markdown("&nbsp;", unsafe_allow_html=True)
+                        st.markdown(
+                            f'<a href="{douyin_link}" target="_blank" '
+                            f'style="color:#1E88E5; text-decoration: underline;">'
+                            f'🎬 抖音视频讲解（点击观看）'
+                            f"</a>",
+                            unsafe_allow_html=True,
+                        )
+                        st.caption("👆 点击下方可一键复制视频讲解发给客户")
+                        st.code(douyin_link, language="text")
+
             with col2:
                 # 图片链接：安全判断列名 + 当前行有值才展示
                 if "图片链接" in result_to_render.columns:
