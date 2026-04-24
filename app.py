@@ -260,92 +260,80 @@ def main() -> None:
     else:
         result_full = df.copy()
 
-    # 优先展示需要的列
-    preferred_show_cols = ["产品名称", "颜色", "门幅", "克重（g/m²）", "价格（元/米）"]
-    show_cols = [c for c in preferred_show_cols if c in result_full.columns]
-    if show_cols:
-        result_show = result_full[show_cols].copy()
-    else:
-        result_show = result_full.copy()
-
-    st.metric("匹配结果", value=len(result_show))
+    # 匹配结果数量（使用完整结果，保证能读取“淘宝链接/图片链接”等列）
+    st.metric("匹配结果", value=len(result_full))
 
     st.divider()
 
     # 结果展示：逐条卡片（更适合客服一键复制）
-    if len(result_show) == 0:
+    if len(result_full) == 0:
         st.warning("没有匹配到结果，请换个关键字试试。")
         return
 
     # 限制一次渲染过多卡片导致卡顿（客服场景通常不需要一下看几千条）
     max_render = 200
-    if len(result_show) > max_render:
-        result_to_render = result_show.head(max_render)
+    if len(result_full) > max_render:
+        result_to_render = result_full.head(max_render)
     else:
-        result_to_render = result_show
+        result_to_render = result_full
 
+    # 这里的 result_to_render 保留完整列，便于安全判断 “淘宝链接/图片链接”
     for idx, row in result_to_render.iterrows():
         with st.container(border=True):
-            # 用完整行数据读取“淘宝链接”等更多字段
-            full_row_obj = result_full.loc[idx] if idx in result_full.index else row
-            if isinstance(full_row_obj, pd.DataFrame):
-                full_row = full_row_obj.iloc[0]
-            else:
-                full_row = full_row_obj
+            col1, col2 = st.columns([2, 1])
 
-            left_col, right_col = st.columns([2, 1])
-
-            with left_col:
+            with col1:
                 name = _safe_series_get(row, "产品名称")
                 color = _safe_series_get(row, "颜色")
                 if not name:
-                    # 兜底：用第一列做标题（避免不同表头时空白）
                     first_col = result_to_render.columns[0] if len(result_to_render.columns) > 0 else ""
                     name = _safe_series_get(row, first_col) if first_col else "（未命名产品）"
 
-                st.markdown(
-                    f"**{name}**" + (f"  ·  **{color}**" if color else "")
-                )
+                st.markdown(f"**{name}**" + (f"  ·  **{color}**" if color else ""))
 
-                # 核心参数（空值跳过）
+                # 基础参数（门幅、克重、价格等）—— 空值直接跳过
                 meta_parts = []
-                v = _safe_series_get(full_row, "门幅") if "门幅" in df.columns else ""
-                if v:
-                    meta_parts.append(f"门幅：{v}")
-                v = _safe_series_get(full_row, "克重（g/m²）") if "克重（g/m²）" in df.columns else ""
-                if v:
-                    meta_parts.append(f"克重：{v}")
-                v = _safe_series_get(full_row, "价格（元/米）") if "价格（元/米）" in df.columns else ""
-                if v:
-                    meta_parts.append(f"价格：{v} 元/米")
-                if "规格" in df.columns:
-                    v = _safe_series_get(full_row, "规格")
-                    if v:
-                        meta_parts.append(f"规格：{v}")
-                comp_col = "成分" if "成分" in df.columns else ("成份" if "成份" in df.columns else None)
-                if comp_col:
-                    v = _safe_series_get(full_row, comp_col)
-                    if v:
-                        meta_parts.append(f"成分：{v}")
+                for label, col in [
+                    ("门幅", "门幅"),
+                    ("克重", "克重（g/m²）"),
+                    ("价格", "价格（元/米）"),
+                    ("规格", "规格"),
+                    ("成分", "成分"),
+                    ("成份", "成份"),
+                ]:
+                    if col in result_to_render.columns:
+                        v = _safe_series_get(row, col)
+                        if v:
+                            if col == "价格（元/米）":
+                                meta_parts.append(f"{label}：{v} 元/米")
+                            else:
+                                meta_parts.append(f"{label}：{v}")
+
                 if meta_parts:
                     st.write("｜".join(meta_parts))
 
-                taobao_link = _safe_series_get(full_row, "淘宝链接") if "淘宝链接" in df.columns else ""
-                if taobao_link:
-                    st.link_button(
-                        "🛒 点击前往淘宝查看（主图/视频/买家秀）",
-                        taobao_link,
-                        use_container_width=True,
-                    )
+                # 淘宝链接：安全判断列名 + 当前行有值才展示
+                if "淘宝链接" in result_to_render.columns:
+                    taobao_link = _safe_series_get(row, "淘宝链接")
+                    if taobao_link:
+                        st.markdown(
+                            f'<a href="{taobao_link}" target="_blank" '
+                            f'style="color:#1E88E5; text-decoration: underline;">'
+                            f'🔗 淘宝产品详情（点击跳转）'
+                            f"</a>",
+                            unsafe_allow_html=True,
+                        )
+                        st.code(taobao_link)
 
-            with right_col:
-                image_url = _safe_series_get(full_row, "图片链接") if "图片链接" in df.columns else ""
-                if image_url:
-                    try:
-                        st.image(image_url, use_container_width=True)
-                    except Exception:
-                        # 链接失效或加载失败时不影响主流程
-                        pass
+            with col2:
+                # 图片链接：安全判断列名 + 当前行有值才展示
+                if "图片链接" in result_to_render.columns:
+                    image_url = _safe_series_get(row, "图片链接")
+                    if image_url:
+                        try:
+                            st.image(image_url, use_container_width=True)
+                        except Exception:
+                            pass
 
 if __name__ == "__main__":
     main()
