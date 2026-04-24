@@ -10,10 +10,6 @@ import streamlit as st
 # 技术栈：Streamlit + pandas + openpyxl
 # =========================
 
-# 内部访问密码（可按需修改）
-INTERNAL_ACCESS_PASSWORD = "123456"
-
-
 def _normalize_text(x) -> str:
     """
     将单元格内容安全转成字符串，并做基础清洗。
@@ -89,35 +85,6 @@ def _prepare_sheet_df(df_raw: pd.DataFrame) -> Tuple[pd.DataFrame, list]:
 
 def main() -> None:
     st.set_page_config(page_title="客服辅助查询软件", page_icon="🧾", layout="wide")
-
-    # -------------------------
-    # 简单登录拦截：输入内部访问密码
-    # -------------------------
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if "auth_error" not in st.session_state:
-        st.session_state.auth_error = None
-
-    if not st.session_state.authenticated:
-        st.title("内部访问验证")
-        st.caption("请输入内部访问密码后继续使用。")
-
-        with st.form("login_form", clear_on_submit=False):
-            pwd = st.text_input("请输入内部访问密码", type="password")
-            submitted = st.form_submit_button("进入")
-
-        if submitted:
-            if pwd == INTERNAL_ACCESS_PASSWORD:
-                st.session_state.authenticated = True
-                st.session_state.auth_error = None
-                st.rerun()
-            else:
-                st.session_state.auth_error = "密码错误，请输入正确的内部密码"
-
-        if st.session_state.auth_error:
-            st.error(st.session_state.auth_error)
-
-        return
 
     st.title("客服辅助查询软件")
 
