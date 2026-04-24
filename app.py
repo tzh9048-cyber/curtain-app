@@ -1,10 +1,8 @@
-import json
 from pathlib import Path
 from typing import Optional, Tuple
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 # =========================
@@ -95,29 +93,6 @@ def load_products_from_upload(file_bytes: bytes, filename: str) -> dict:
     return pd.read_excel(BytesIO(file_bytes), sheet_name=None)
 
 
-def build_script(template: str, row: pd.Series) -> str:
-    """
-    将一条产品记录按模板拼接成标准话术。
-    模板占位符采用中文中括号形式：【产品名称】等。
-    """
-    mapping = {
-        "产品名称": _normalize_text(row.get("产品名称")),
-        "颜色": _normalize_text(row.get("颜色")),
-        "门幅": _normalize_text(row.get("门幅")),
-        "克重": _normalize_text(row.get("克重（g/m²）")),
-        "价格": _normalize_text(row.get("价格（元/米）")),
-    }
-
-    script = template
-    # 逐个替换，保证客服可直观看懂模板
-    script = script.replace("【产品名称】", mapping["产品名称"])
-    script = script.replace("【颜色】", mapping["颜色"])
-    script = script.replace("【门幅】", mapping["门幅"])
-    script = script.replace("【克重】", mapping["克重"])
-    script = script.replace("【价格】", mapping["价格"])
-    return script
-
-
 def _safe_series_get(row: pd.Series, col: str) -> str:
     return _normalize_text(row.get(col))
 
@@ -140,28 +115,6 @@ def _prepare_sheet_df(df_raw: pd.DataFrame) -> Tuple[pd.DataFrame, list]:
             df[col] = df[col].astype(str).map(_normalize_text)
 
     return df, missing_required
-
-
-def copy_to_clipboard_js(text: str) -> None:
-    """
-    通过浏览器 JS 写入剪贴板。
-    Streamlit 运行在浏览器里，因此最稳妥的是用 navigator.clipboard。
-    """
-    payload = json.dumps(text, ensure_ascii=False)
-    components.html(
-        f"""
-        <script>
-          (async () => {{
-            try {{
-              await navigator.clipboard.writeText({payload});
-            }} catch (e) {{
-              console.error(e);
-            }}
-          }})();
-        </script>
-        """,
-        height=0,
-    )
 
 
 def main() -> None:
@@ -357,10 +310,6 @@ def main() -> None:
     else:
         result_to_render = result_show
 
-    # 点击“复制话术”后，用 JS 自动复制
-    if "copy_text" not in st.session_state:
-        st.session_state.copy_text = None
-
     for idx, row in result_to_render.iterrows():
         with st.container(border=True):
             # 用完整行数据读取“淘宝链接”等更多字段
@@ -370,68 +319,50 @@ def main() -> None:
             else:
                 full_row = full_row_obj
 
-            c1, c2, c3 = st.columns([0.55, 0.25, 0.20])
+            # 单栏更宽、更适合手机端展示
+            name = _safe_series_get(row, "产品名称")
+            color = _safe_series_get(row, "颜色")
+            if not name:
+                # 兜底：用第一列做标题（避免不同表头时空白）
+                first_col = result_to_render.columns[0] if len(result_to_render.columns) > 0 else ""
+                name = _safe_series_get(row, first_col) if first_col else "（未命名产品）"
 
-            with c1:
-                name = _safe_series_get(row, "产品名称")
-                color = _safe_series_get(row, "颜色")
-                if not name:
-                    # 兜底：用第一列做标题（避免不同表头时空白）
-                    first_col = result_to_render.columns[0] if len(result_to_render.columns) > 0 else ""
-                    name = _safe_series_get(row, first_col) if first_col else "（未命名产品）"
+            st.markdown(
+                f"**{name}**" + (f"  ·  **{color}**" if color else "")
+            )
 
+            # 仅展示存在的关键字段，避免 KeyError
+            meta_parts = []
+            if "门幅" in result_to_render.columns or "门幅" in df.columns:
+                v = _safe_series_get(row, "门幅")
+                if v:
+                    meta_parts.append(f"门幅：{v}")
+            if "克重（g/m²）" in result_to_render.columns or "克重（g/m²）" in df.columns:
+                v = _safe_series_get(row, "克重（g/m²）")
+                if v:
+                    meta_parts.append(f"克重：{v}")
+            if "价格（元/米）" in result_to_render.columns or "价格（元/米）" in df.columns:
+                v = _safe_series_get(row, "价格（元/米）")
+                if v:
+                    meta_parts.append(f"价格：{v} 元/米")
+            if meta_parts:
+                st.write("｜".join(meta_parts))
+
+            taobao_link = _safe_series_get(full_row, "淘宝链接") if "淘宝链接" in df.columns else ""
+            if taobao_link:
                 st.markdown(
-                    f"**{name}**" + (f"  ·  **{color}**" if color else "")
+                    f'<a href="{taobao_link}" target="_blank" '
+                    f'style="color:#1E88E5; text-decoration: underline;">'
+                    f'🔗 淘宝产品详情（点击跳转）'
+                    f"</a>",
+                    unsafe_allow_html=True,
                 )
-
-                # 仅展示存在的关键字段，避免 KeyError
-                meta_parts = []
-                if "门幅" in result_to_render.columns or "门幅" in df.columns:
-                    v = _safe_series_get(row, "门幅")
-                    if v:
-                        meta_parts.append(f"门幅：{v}")
-                if "克重（g/m²）" in result_to_render.columns or "克重（g/m²）" in df.columns:
-                    v = _safe_series_get(row, "克重（g/m²）")
-                    if v:
-                        meta_parts.append(f"克重：{v}")
-                if "价格（元/米）" in result_to_render.columns or "价格（元/米）" in df.columns:
-                    v = _safe_series_get(row, "价格（元/米）")
-                    if v:
-                        meta_parts.append(f"价格：{v} 元/米")
-                if meta_parts:
-                    st.write("｜".join(meta_parts))
-
-                taobao_link = _safe_series_get(full_row, "淘宝链接") if "淘宝链接" in df.columns else ""
-                if taobao_link:
-                    st.markdown(
-                        f'<a href="{taobao_link}" target="_blank" '
-                        f'style="color:#1E88E5; text-decoration: underline;">'
-                        f'🔗 淘宝产品详情（点击跳转）'
-                        f"</a>",
-                        unsafe_allow_html=True,
-                    )
-                    st.caption("👆 长按上方链接或点击下方复制发送给客户")
-                    st.text_input(
-                        "原始 URL（可复制）",
-                        value=taobao_link,
-                        key=f"taobao_url_{idx}",
-                    )
-
-            with c2:
-                script = build_script(template, full_row)
-                st.text_area("预览话术", value=script, height=90, key=f"preview_{idx}")
-
-            with c3:
-                if st.button("复制话术", key=f"copy_{idx}", use_container_width=True):
-                    st.session_state.copy_text = script
-                    st.toast("已复制到剪贴板", icon="✅")
-
-    # 放在循环后统一执行复制（避免重复插入 JS）
-    if st.session_state.copy_text:
-        copy_to_clipboard_js(st.session_state.copy_text)
-        # 复制完成后清空，避免每次 rerun 都重复复制
-        st.session_state.copy_text = None
-
+                st.caption("👆 长按上方链接或点击下方复制发送给客户")
+                st.text_input(
+                    "原始 URL（可复制）",
+                    value=taobao_link,
+                    key=f"taobao_url_{idx}",
+                )
 
 if __name__ == "__main__":
     main()
