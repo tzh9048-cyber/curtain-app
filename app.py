@@ -319,50 +319,61 @@ def main() -> None:
             else:
                 full_row = full_row_obj
 
-            # 单栏更宽、更适合手机端展示
-            name = _safe_series_get(row, "产品名称")
-            color = _safe_series_get(row, "颜色")
-            if not name:
-                # 兜底：用第一列做标题（避免不同表头时空白）
-                first_col = result_to_render.columns[0] if len(result_to_render.columns) > 0 else ""
-                name = _safe_series_get(row, first_col) if first_col else "（未命名产品）"
+            left_col, right_col = st.columns([3, 1])
 
-            st.markdown(
-                f"**{name}**" + (f"  ·  **{color}**" if color else "")
-            )
+            with left_col:
+                name = _safe_series_get(row, "产品名称")
+                color = _safe_series_get(row, "颜色")
+                if not name:
+                    # 兜底：用第一列做标题（避免不同表头时空白）
+                    first_col = result_to_render.columns[0] if len(result_to_render.columns) > 0 else ""
+                    name = _safe_series_get(row, first_col) if first_col else "（未命名产品）"
 
-            # 仅展示存在的关键字段，避免 KeyError
-            meta_parts = []
-            if "门幅" in result_to_render.columns or "门幅" in df.columns:
-                v = _safe_series_get(row, "门幅")
-                if v:
-                    meta_parts.append(f"门幅：{v}")
-            if "克重（g/m²）" in result_to_render.columns or "克重（g/m²）" in df.columns:
-                v = _safe_series_get(row, "克重（g/m²）")
-                if v:
-                    meta_parts.append(f"克重：{v}")
-            if "价格（元/米）" in result_to_render.columns or "价格（元/米）" in df.columns:
-                v = _safe_series_get(row, "价格（元/米）")
-                if v:
-                    meta_parts.append(f"价格：{v} 元/米")
-            if meta_parts:
-                st.write("｜".join(meta_parts))
-
-            taobao_link = _safe_series_get(full_row, "淘宝链接") if "淘宝链接" in df.columns else ""
-            if taobao_link:
                 st.markdown(
-                    f'<a href="{taobao_link}" target="_blank" '
-                    f'style="color:#1E88E5; text-decoration: underline;">'
-                    f'🔗 淘宝产品详情（点击跳转）'
-                    f"</a>",
-                    unsafe_allow_html=True,
+                    f"**{name}**" + (f"  ·  **{color}**" if color else "")
                 )
-                st.caption("👆 长按上方链接或点击下方复制发送给客户")
-                st.text_input(
-                    "原始 URL（可复制）",
-                    value=taobao_link,
-                    key=f"taobao_url_{idx}",
-                )
+
+                # 仅展示存在的关键字段，避免 KeyError
+                meta_parts = []
+                if "门幅" in result_to_render.columns or "门幅" in df.columns:
+                    v = _safe_series_get(row, "门幅")
+                    if v:
+                        meta_parts.append(f"门幅：{v}")
+                if "克重（g/m²）" in result_to_render.columns or "克重（g/m²）" in df.columns:
+                    v = _safe_series_get(row, "克重（g/m²）")
+                    if v:
+                        meta_parts.append(f"克重：{v}")
+                if "价格（元/米）" in result_to_render.columns or "价格（元/米）" in df.columns:
+                    v = _safe_series_get(row, "价格（元/米）")
+                    if v:
+                        meta_parts.append(f"价格：{v} 元/米")
+                if meta_parts:
+                    st.write("｜".join(meta_parts))
+
+                taobao_link = _safe_series_get(full_row, "淘宝链接") if "淘宝链接" in df.columns else ""
+                if taobao_link:
+                    st.markdown(
+                        f'<a href="{taobao_link}" target="_blank" '
+                        f'style="color:#1E88E5; text-decoration: underline;">'
+                        f'🔗 淘宝产品详情（点击跳转）'
+                        f"</a>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("👆 长按上方链接或点击下方复制发送给客户")
+                    st.text_input(
+                        "原始 URL（可复制）",
+                        value=taobao_link,
+                        key=f"taobao_url_{idx}",
+                    )
+
+            with right_col:
+                image_url = _safe_series_get(full_row, "图片链接") if "图片链接" in df.columns else ""
+                if image_url:
+                    try:
+                        st.image(image_url, use_container_width=True)
+                    except Exception:
+                        # 链接失效或加载失败时不影响主流程
+                        pass
 
 if __name__ == "__main__":
     main()
