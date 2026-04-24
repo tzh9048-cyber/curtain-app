@@ -133,11 +133,10 @@ def main() -> None:
         return
 
     st.title("客服辅助查询软件")
-    st.caption("支持 Excel 自动读取/上传、模糊搜索、结果展示、一键复制标准话术。")
 
     with st.sidebar:
         st.subheader("🧮 快速报价计算器")
-        st.divider()
+        # 侧边栏只保留快速报价计算器模块
 
         w_width = st.number_input(
             "窗户宽度（米）",
@@ -235,68 +234,23 @@ def main() -> None:
         st.error("该 Excel 未读取到任何工作表（Sheet）。请确认文件内容是否正常。")
         return
 
-    # 侧边栏：产品大类（工作表）导航
-    with st.sidebar:
-        st.divider()
-        st.subheader("产品大类")
-        selected_sheet = st.selectbox(
-            "请选择产品大类",
-            options=sheet_names,
-            index=0,
-        )
+    selected_sheet = st.selectbox("产品大类", options=sheet_names, index=0)
 
     df_raw = sheets.get(selected_sheet)
     if df_raw is None:
         st.error("所选工作表为空或读取失败，请切换其他工作表重试。")
         return
 
-    df, missing = _prepare_sheet_df(df_raw)
-    if missing:
-        st.warning(
-            "当前工作表缺少部分标准列，已进入兼容模式：仍可搜索与展示，但标准话术/固定字段可能显示为空。\n\n"
-            f"缺失列：{', '.join(missing)}"
-        )
+    df, _missing = _prepare_sheet_df(df_raw)
 
-    st.subheader("模糊搜索")
-
-    def _resolve_optional_col(*candidates: str) -> Optional[str]:
-        for c in candidates:
-            if c in df.columns:
-                return c
-        return None
-
-    optional_cols = {
-        "规格": _resolve_optional_col("规格"),
-        "成分": _resolve_optional_col("成分", "成份"),
-    }
-
-    selectable = [("产品名称", "产品名称"), ("颜色", "颜色")]
-    if optional_cols["规格"] is not None:
-        selectable.append(("规格", optional_cols["规格"]))
-    if optional_cols["成分"] is not None:
-        selectable.append(("成分", optional_cols["成分"]))
-
-    selected_labels = st.multiselect(
-        "检索字段",
-        options=[x[0] for x in selectable],
-        default=[x[0] for x in selectable],
-        help="可多选。若 Excel 中不存在“规格/成分”列，会自动不显示该选项。",
-    )
-    selected_cols = [col for label, col in selectable if label in set(selected_labels)]
-
-    query = st.text_input(
-        "输入关键字（支持模糊匹配）",
-        placeholder="例如：遮光 / 奶茶 / 高级灰 / 法式 / 珍珠白 ...",
-    )
+    query = st.text_input("搜索", placeholder="输入关键字")
 
     # 过滤
     if query.strip():
         q = query.strip().lower()
-        # 选中的字段任意命中即可
-        if not selected_cols:
-            # 兜底：优先常用列，否则用所有列
-            preferred = [c for c in ["产品名称", "颜色"] if c in df.columns]
-            selected_cols = preferred if preferred else list(df.columns)
+        # 固定在常用字段里检索，保持界面简洁
+        preferred = [c for c in ["产品名称", "颜色", "规格", "成分", "成份"] if c in df.columns]
+        selected_cols = preferred if preferred else list(df.columns)
         mask = False
         for col in selected_cols:
             if col not in df.columns:
@@ -314,11 +268,7 @@ def main() -> None:
     else:
         result_show = result_full.copy()
 
-    left, right = st.columns([1, 1])
-    with left:
-        st.metric("匹配结果", value=len(result_show))
-    with right:
-        st.caption("提示：结果很多时建议先输入关键字缩小范围。")
+    st.metric("匹配结果", value=len(result_show))
 
     st.divider()
 
@@ -330,7 +280,6 @@ def main() -> None:
     # 限制一次渲染过多卡片导致卡顿（客服场景通常不需要一下看几千条）
     max_render = 200
     if len(result_show) > max_render:
-        st.info(f"结果较多（{len(result_show)} 条），仅展示前 {max_render} 条。建议继续输入关键字缩小范围。")
         result_to_render = result_show.head(max_render)
     else:
         result_to_render = result_show
@@ -344,7 +293,7 @@ def main() -> None:
             else:
                 full_row = full_row_obj
 
-            left_col, right_col = st.columns([3, 1])
+            left_col, right_col = st.columns([2, 1])
 
             with left_col:
                 name = _safe_series_get(row, "产品名称")
@@ -358,20 +307,26 @@ def main() -> None:
                     f"**{name}**" + (f"  ·  **{color}**" if color else "")
                 )
 
-                # 仅展示存在的关键字段，避免 KeyError
+                # 核心参数（空值跳过）
                 meta_parts = []
-                if "门幅" in result_to_render.columns or "门幅" in df.columns:
-                    v = _safe_series_get(row, "门幅")
+                v = _safe_series_get(full_row, "门幅") if "门幅" in df.columns else ""
+                if v:
+                    meta_parts.append(f"门幅：{v}")
+                v = _safe_series_get(full_row, "克重（g/m²）") if "克重（g/m²）" in df.columns else ""
+                if v:
+                    meta_parts.append(f"克重：{v}")
+                v = _safe_series_get(full_row, "价格（元/米）") if "价格（元/米）" in df.columns else ""
+                if v:
+                    meta_parts.append(f"价格：{v} 元/米")
+                if "规格" in df.columns:
+                    v = _safe_series_get(full_row, "规格")
                     if v:
-                        meta_parts.append(f"门幅：{v}")
-                if "克重（g/m²）" in result_to_render.columns or "克重（g/m²）" in df.columns:
-                    v = _safe_series_get(row, "克重（g/m²）")
+                        meta_parts.append(f"规格：{v}")
+                comp_col = "成分" if "成分" in df.columns else ("成份" if "成份" in df.columns else None)
+                if comp_col:
+                    v = _safe_series_get(full_row, comp_col)
                     if v:
-                        meta_parts.append(f"克重：{v}")
-                if "价格（元/米）" in result_to_render.columns or "价格（元/米）" in df.columns:
-                    v = _safe_series_get(row, "价格（元/米）")
-                    if v:
-                        meta_parts.append(f"价格：{v} 元/米")
+                        meta_parts.append(f"成分：{v}")
                 if meta_parts:
                     st.write("｜".join(meta_parts))
 
@@ -384,9 +339,8 @@ def main() -> None:
                         f"</a>",
                         unsafe_allow_html=True,
                     )
-                    st.caption("👆 长按上方链接或点击下方复制发送给客户")
                     st.text_input(
-                        "原始 URL（可复制）",
+                        "原始 URL (可复制)",
                         value=taobao_link,
                         key=f"taobao_url_{idx}",
                     )
