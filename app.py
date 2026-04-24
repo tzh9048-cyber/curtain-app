@@ -10,8 +10,8 @@ import streamlit as st
 # 技术栈：Streamlit + pandas + openpyxl
 # =========================
 
-# 你提供的产品 Excel 默认路径（可在侧边栏改）
-DEFAULT_EXCEL_PATH = r"C:\Users\Administrator\Desktop\古思特产品资料-2026.4.3.xlsx"
+# 产品资料 Excel：部署到云端时使用仓库内相对路径
+DEFAULT_EXCEL_FILENAME = "古思特产品资料-2026.4.3.xlsx"
 
 # 内部访问密码（可按需修改）
 INTERNAL_ACCESS_PASSWORD = "123456"
@@ -74,18 +74,6 @@ def load_products_from_path(excel_path: str) -> dict:
     """
     # sheet_name=None -> 读取所有工作表，返回 {sheet_name: DataFrame}
     return pd.read_excel(excel_path, sheet_name=None)
-
-
-@st.cache_data(show_spinner=False)
-def load_products_from_upload(file_bytes: bytes, filename: str) -> dict:
-    """
-    从上传文件读取 Excel。
-    - filename 参与缓存 key，避免不同文件内容但同 bytes 结构导致缓存混淆
-    """
-    # pandas 可以直接读取字节流；这里用 BytesIO 包装
-    from io import BytesIO
-
-    return pd.read_excel(BytesIO(file_bytes), sheet_name=None)
 
 
 def _safe_series_get(row: pd.Series, col: str) -> str:
@@ -231,51 +219,15 @@ def main() -> None:
 
         st.divider()
 
-        st.subheader("数据来源")
-        mode = st.radio(
-            "请选择加载方式",
-            options=["读取本地路径（推荐）", "上传 Excel"],
-            index=0,
-        )
-
-        excel_path = st.text_input("本地 Excel 路径", value=DEFAULT_EXCEL_PATH)
-        uploaded = st.file_uploader(
-            "上传 Excel（.xlsx/.xls）",
-            type=["xlsx", "xls"],
-            accept_multiple_files=False,
-        )
-
     # 读取数据
-    sheets: Optional[dict] = None
-    load_error: Optional[str] = None
-
-    if mode == "上传 Excel":
-        if uploaded is None:
-            st.info("请在左侧上传你的 `products.xlsx`（或你的产品资料 Excel）。")
-        else:
-            try:
-                sheets = load_products_from_upload(uploaded.getvalue(), uploaded.name)
-            except Exception as e:
-                load_error = f"读取上传文件失败：{e}"
-    else:
-        # 本地路径读取
-        try:
-            if not excel_path.strip():
-                st.info("请在左侧填写 Excel 路径，或切换到“上传 Excel”。")
-            else:
-                p = Path(excel_path)
-                if not p.exists():
-                    st.warning("未找到该路径的 Excel 文件。请检查路径是否正确，或使用上传方式。")
-                else:
-                    sheets = load_products_from_path(excel_path)
-        except Exception as e:
-            load_error = f"读取本地文件失败：{e}"
-
-    if load_error:
-        st.error(load_error)
+    excel_path = Path(DEFAULT_EXCEL_FILENAME)
+    if not excel_path.exists():
+        st.error("未找到产品资料文件，请联系管理员")
         return
-
-    if sheets is None:
+    try:
+        sheets = load_products_from_path(str(excel_path))
+    except Exception:
+        st.error("未找到产品资料文件，请联系管理员")
         return
 
     sheet_names = [name for name in sheets.keys() if name is not None]
