@@ -153,6 +153,89 @@ def main() -> None:
     st.caption("支持 Excel 自动读取/上传、模糊搜索、结果展示、一键复制标准话术。")
 
     with st.sidebar:
+        st.subheader("🧮 快速报价计算器")
+        st.divider()
+
+        w_width = st.number_input(
+            "窗户宽度（米）",
+            min_value=0.0,
+            value=3.0,
+            step=0.1,
+            key="calc_window_width_m",
+        )
+        w_height = st.number_input(
+            "窗户高度（米）",
+            min_value=0.0,
+            value=2.5,
+            step=0.1,
+            key="calc_window_height_m",
+        )
+
+        pricing_type = st.selectbox(
+            "计价类型",
+            options=[
+                "布艺窗帘 (按宽度×倍数)",
+                "特殊帘 (按面积 平米)",
+            ],
+            index=0,
+            key="calc_pricing_type",
+        )
+
+        if pricing_type == "布艺窗帘 (按宽度×倍数)":
+            fold = st.number_input(
+                "褶皱倍数",
+                min_value=0.0,
+                value=2.0,
+                step=0.1,
+                key="calc_fold_multiplier",
+            )
+            fabric_unit = st.number_input(
+                "布料单价（元/米）",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                key="calc_fabric_unit_price",
+            )
+            rail_unit = st.number_input(
+                "轨道/罗马杆单价（元/米）",
+                min_value=0.0,
+                value=35.0,
+                step=1.0,
+                key="calc_rail_unit_price",
+            )
+
+            if st.button("计算预估总价", use_container_width=True, key="calc_btn_fabric"):
+                fabric_cost = w_width * fold * fabric_unit
+                rail_cost = w_width * rail_unit
+                total = fabric_cost + rail_cost
+                st.success(f"**预估总价：{total:.2f} 元**")
+                st.info(
+                    "明细：\n"
+                    f"- 布料费用 = 窗宽({w_width:.2f}) × 褶皱倍数({fold:.2f}) × 布料单价({fabric_unit:.2f}) = {fabric_cost:.2f} 元\n"
+                    f"- 轨道费用 = 窗宽({w_width:.2f}) × 轨道单价({rail_unit:.2f}) = {rail_cost:.2f} 元\n"
+                    f"- 总价 = {fabric_cost:.2f} + {rail_cost:.2f} = {total:.2f} 元"
+                )
+        else:
+            area_unit = st.number_input(
+                "产品单价（元/平米）",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                key="calc_area_unit_price",
+            )
+
+            if st.button("计算预估总价", use_container_width=True, key="calc_btn_area"):
+                area = w_width * w_height
+                total = area * area_unit
+                st.success(f"**预估总价：{total:.2f} 元**")
+                st.info(
+                    "明细：\n"
+                    f"- 面积 = 窗宽({w_width:.2f}) × 窗高({w_height:.2f}) = {area:.2f} 平米\n"
+                    f"- 总价 = 面积({area:.2f}) × 单价({area_unit:.2f}) = {total:.2f} 元"
+                )
+
+        st.divider()
+
         st.subheader("数据来源")
         mode = st.radio(
             "请选择加载方式",
