@@ -10,9 +10,6 @@ import streamlit as st
 # 技术栈：Streamlit + pandas + openpyxl
 # =========================
 
-# 产品资料 Excel：部署到云端时使用仓库内相对路径
-DEFAULT_EXCEL_FILENAME = "古思特产品资料-2026.4.3.xlsx"
-
 # 内部访问密码（可按需修改）
 INTERNAL_ACCESS_PASSWORD = "123456"
 
@@ -64,16 +61,6 @@ def _ensure_required_columns(df: pd.DataFrame) -> Tuple[pd.DataFrame, list]:
         missing = [c for c in required if c not in df.columns]
 
     return df, missing
-
-
-@st.cache_data(show_spinner=False)
-def load_products_from_path(excel_path: str) -> dict:
-    """
-    从本地路径读取 Excel。
-    - 使用 cache_data 避免每次输入搜索都重新读取文件
-    """
-    # sheet_name=None -> 读取所有工作表，返回 {sheet_name: DataFrame}
-    return pd.read_excel(excel_path, sheet_name=None)
 
 
 def _safe_series_get(row: pd.Series, col: str) -> str:
@@ -135,6 +122,12 @@ def main() -> None:
     st.title("客服辅助查询软件")
 
     with st.sidebar:
+        uploaded_file = st.sidebar.file_uploader(
+            "📂 请上传最新的产品资料 Excel",
+            type=["xlsx", "xls"],
+        )
+        st.divider()
+
         st.subheader("🧮 快速报价计算器")
         # 侧边栏只保留快速报价计算器模块
 
@@ -218,15 +211,16 @@ def main() -> None:
 
         st.divider()
 
-    # 读取数据
-    excel_path = Path(DEFAULT_EXCEL_FILENAME)
-    if not excel_path.exists():
-        st.error("未找到产品资料文件，请联系管理员")
+    # 读取数据：改为手动上传 Excel（仅修改入口，不影响后续展示逻辑）
+    if uploaded_file is None:
+        st.info("👈 请先在左侧菜单上传产品资料 Excel 文件，即可开始查询和报价。")
         return
+
     try:
-        sheets = load_products_from_path(str(excel_path))
+        # 读取所有工作表，保持“产品大类（Sheet）”选择与后续逻辑不变
+        sheets = pd.read_excel(uploaded_file, sheet_name=None)
     except Exception:
-        st.error("未找到产品资料文件，请联系管理员")
+        st.error("读取上传文件失败，请检查文件是否为有效的 Excel。")
         return
 
     sheet_names = [name for name in sheets.keys() if name is not None]
