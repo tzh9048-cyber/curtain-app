@@ -403,10 +403,18 @@ def main() -> None:
 
                 taobao_link = _safe_series_get(full_row, "淘宝链接") if "淘宝链接" in df.columns else ""
                 if taobao_link:
-                    st.link_button(
-                        "🛒 点击前往淘宝查看（主图/视频/买家秀）",
-                        taobao_link,
-                        use_container_width=True,
+                    st.markdown(
+                        f'<a href="{taobao_link}" target="_blank" '
+                        f'style="color:#1E88E5; text-decoration: underline;">'
+                        f'🔗 淘宝产品详情（点击跳转）'
+                        f"</a>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("👆 长按上方链接或点击下方复制发送给客户")
+                    st.text_input(
+                        "原始 URL（可复制）",
+                        value=taobao_link,
+                        key=f"taobao_url_{idx}",
                     )
 
             with c2:
