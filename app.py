@@ -13,11 +13,6 @@ import streamlit as st
 # 你提供的产品 Excel 默认路径（可在侧边栏改）
 DEFAULT_EXCEL_PATH = r"C:\Users\Administrator\Desktop\古思特产品资料-2026.4.3.xlsx"
 
-# 话术模板（可在界面里随时修改）
-DEFAULT_TEMPLATE = (
-    "您好，这款【产品名称】【颜色】的门幅是【门幅】，克重【克重】，"
-    "目前的价格是【价格】元/米。")
-
 # 内部访问密码（可按需修改）
 INTERNAL_ACCESS_PASSWORD = "123456"
 
@@ -249,11 +244,6 @@ def main() -> None:
             type=["xlsx", "xls"],
             accept_multiple_files=False,
         )
-
-        st.divider()
-        st.subheader("话术模板")
-        template = st.text_area("可按需修改模板", value=DEFAULT_TEMPLATE, height=120)
-        st.caption("可用占位符：【产品名称】【颜色】【门幅】【克重】【价格】")
 
     # 读取数据
     sheets: Optional[dict] = None
