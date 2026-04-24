@@ -323,7 +323,7 @@ def main() -> None:
                             f"</a>",
                             unsafe_allow_html=True,
                         )
-                        st.code(taobao_link)
+                        st.code(taobao_link, language="text")
 
             with col2:
                 # 图片链接：安全判断列名 + 当前行有值才展示
